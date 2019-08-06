@@ -10,6 +10,7 @@ import time
 from sklearn.preprocessing import StandardScaler, RobustScaler #Scaling Time and Amount
 from mpl_toolkits import mplot3d
 from sklearn.feature_selection import SelectKBest
+from sklearn.feature_selection import mutual_info_classif
 
 rb_scaler=RobustScaler()
 #### Importing Data
@@ -29,7 +30,7 @@ temp_df=df.drop(['Time','Amount','Class'],axis=1)
 
 
 
-frauds=df.loc[df['Class']==1] ## 491 fraudulent transactions
+frauds=df.loc[df['Class']==1] ## 492 fraudulent transactions
 legit=df.loc[df['Class']==0] ## 284315 legitimate transactions
 
 # f, axes= plt.subplots(nrows=2,ncols=3)
@@ -51,7 +52,7 @@ legit=df.loc[df['Class']==0] ## 284315 legitimate transactions
 X=temp_df
 y=df['Class']
 
-selector = SelectKBest(k=20)
+selector = SelectKBest(k=11)
 selector.fit(X, y)
 
 X_new=X_new = selector.transform(X)
@@ -71,11 +72,24 @@ print(k_best)
 
 ## Reasonably Gaussian
 
+
 ### Now we proceed tp restrict the data to these features
 
 k_best.append('Class')
 frauds=frauds[k_best]
 legit=legit[k_best]
+
+# f3, axes3 =plt.subplots(1,3)
+# sns.scatterplot(legit[k_best[0]],legit[k_best[1]], ax=axes3[0])
+# sns.scatterplot(frauds[k_best[0]],frauds[k_best[1]], ax=axes3[0])
+
+# sns.scatterplot(legit[k_best[0]],legit[k_best[2]], ax=axes3[1])
+# sns.scatterplot(frauds[k_best[0]],frauds[k_best[2]], ax=axes3[1])
+
+# sns.scatterplot(legit[k_best[1]],legit[k_best[2]], ax=axes3[2])
+# sns.scatterplot(frauds[k_best[1]],frauds[k_best[2]], ax=axes3[2])
+# plt.show()
+
 
 
 #### Dataset division
@@ -290,3 +304,4 @@ print('Precision is:' , test_precision, '\n', 'Recall is:' , test_recall, '\n', 
 
 
 
+### Feature selection improves the F1 score around 0.1. The recall is also better, but not by much. Precision improves by 0.1 as well.

@@ -13,9 +13,11 @@ from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.model_selection import StratifiedKFold, learning_curve
 from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.metrics import f1_score, precision_score, precision_recall_fscore_support, fbeta_score, classification_report, roc_curve, roc_auc_score
+from sklearn.metrics import f1_score, precision_score, precision_recall_fscore_support, fbeta_score, classification_report, roc_curve, roc_auc_score, confusion_matrix
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
 
 
 
@@ -193,7 +195,7 @@ def best_model_params(model,param_list,undersample,*args,**kwargs):#,param,class
             md=model(**param_d,**kwargs)
             md.fit(X_train,y_train)
             preds=md.predict(X_cv)
-            score=precision_recall_fscore_support(y_cv,preds,beta=1.0)
+            score=precision_recall_fscore_support(y_cv,preds,beta=1.5)
             #score2=fbeta_score(y_cv,preds,beta=1.0)
             precision=score[0][1]
             recall=score[1][1]
@@ -210,10 +212,10 @@ def best_model_params(model,param_list,undersample,*args,**kwargs):#,param,class
         av_support=np.asarray(supports).mean()
         #av_score2=np.asarray(scores2).mean()
         av_scores.append(av_score)
-        print('\n-> The average scores for the parameter {} with value {} are: F1 Score {}, precision {}, recall {}, support {}.'.format(param,i,av_score,av_precision,av_recall,av_support))
+        print('\n-> The average scores for the parameter {} with value {} are: Fbeta Score {}, precision {}, recall {}, support {}.'.format(param,i,av_score,av_precision,av_recall,av_support))
     best_score=np.asarray(av_scores).max()
     best_param=param_list[np.argmax(np.asarray(av_scores))]
-    print('\n\n-> The best value for parameter {} is {} with an F1 Score of {}.\n'.format(param,best_param,best_score))
+    print('\n\n-> The best value for parameter {} is {} with an Fbeta Score of {}.\n'.format(param,best_param,best_score))
     return best_param
 
 
@@ -228,13 +230,13 @@ try:
     best_params_df=pd.read_csv('best_params_lg.csv')
 except:
     print('\n\n-> A DataFrame with the best parameters did not exist. The optimization will run and create the file.')
-    best_c=best_model_params(LogisticRegression,[0.01,0.1,1,10,100],100,'C',solver='liblinear',penalty='l2')
+    best_c=best_model_params(LogisticRegression,[0.01,0.1,1,10,100],None,'C',solver='liblinear',penalty='l2')
 
-    best_weights=best_model_params(LogisticRegression,[{0:1,1:1},{0:1,1:5},{0:1,1:10},{0:1,1:100},{0:1,1:1000}],100,'class_weight',C=best_c,solver='liblinear',penalty='l2')
+    best_weights=best_model_params(LogisticRegression,[{0:1,1:1},{0:1,1:5},{0:1,1:10},{0:1,1:100},{0:1,1:1000}],None,'class_weight',C=best_c,solver='liblinear',penalty='l2')
 
-    best_c=best_model_params(LogisticRegression,[0.001,0.01,0.1,1,10,100], 100,'C',solver='liblinear',penalty='l2',class_weight=best_weights)
+    best_c=best_model_params(LogisticRegression,[0.001,0.01,0.1,1,10,100], None,'C',solver='liblinear',penalty='l2',class_weight=best_weights)
 
-    best_weights=best_model_params(LogisticRegression,[{0:1,1:5},{0:1,1:10},{0:1,1:30},{0:1,1:60}], 100,'class_weight',C=best_c,solver='liblinear',penalty='l2')
+    best_weights=best_model_params(LogisticRegression,[{0:1,1:1},{0:1,1:5},{0:1,1:10},{0:1,1:30},{0:1,1:60},{0:1,1:100}], None,'class_weight',C=best_c,solver='liblinear',penalty='l2')
 
 
     best_params_df=pd.DataFrame({'C':[best_c],'Class_Weights0':[best_weights[0]],'Class_Weights1':[best_weights[1]]})
@@ -245,6 +247,14 @@ best_c=best_params_df['C'].tolist()[0]
 best_weights={0:best_params_df['Class_Weights0'].tolist()[0],1:best_params_df['Class_Weights1'].tolist()[0]}
 
 ## Use the best model on the test data
+
+# Before using the model on the test set, one must perform the scaling of the amount variable in the test set
+
+rb=RobustScaler()
+rb.fit(X_train_cv['Amount'].values.reshape(-1,1))
+X_test['Amount']=rb.transform(X_test['Amount'].values.reshape(-1,1))
+
+# Now the model
 
 lg=LogisticRegression(C=best_c,class_weight=best_weights,solver='liblinear',penalty='l2')
 lg.fit(X_train_cv,y_train_cv)
@@ -297,11 +307,11 @@ def best_threshold(thresholds,probabilities,true_labels):
         print('-> Threshold = {}'.format(thresh))
         print('============================\n')
         print(classification_report(true_labels,y_preds))
-        score=f1_score(true_labels,y_preds)
+        score=fbeta_score(true_labels,y_preds,beta=1.5)
         scores.append(score)
     bestScore=max(scores)
     bestThre=thresholds[np.argmax(np.asarray(scores))]
-    print('-> The best value for the threshold is {} with an F Score value of {:.3f}.'.format(bestThre,bestScore))
+    print('-> The best value for the threshold is {} with an F Beta Score value of {:.3f}.'.format(bestThre,bestScore))
     return bestThre
 
 if 'Threshold' not in best_params_df.columns:
@@ -314,8 +324,15 @@ if 'Threshold' not in best_params_df.columns:
 bestThr=best_params_df['Threshold'].tolist()[0]
 print('The best threshold is {:.1f}.'.format(bestThr))
 
-        
+sns.heatmap(confusion_matrix(y_test,predictions),annot=True)
+plt.xlabel('Predicted Label')
+plt.ylabel('True Label')
+plt.title('Confusion Matrix for the test set')
+plt.show()
 
+
+
+"""
 #####################
 #
 # SVM
@@ -385,10 +402,81 @@ plt.plot(fpr,tpr,color="r")
 plt.show()
 
 
+"""
+
+#####################
+#
+# AdaBoost
+#
+#####################
 
 
+try:
+    best_params_df=pd.read_csv('best_params_ada.csv')
+except:
+    print('\n\n-> A DataFrame with the best parameters did not exist. The optimization will run and create the file.')
+
+    best_n=best_model_params(AdaBoostClassifier,[10,20,30,40,50,60,70,80,90,100],100,'n_estimators',base_estimator=DecisionTreeClassifier(max_depth=2))
+
+    best_lr=best_model_params(AdaBoostClassifier,[0.01,0.05,0.1,0.2,0.4,0.6,0.8, 1, 10],100,'learning_rate',n_estimators=best_n,base_estimator=DecisionTreeClassifier(max_depth=2))
+
+    best_n=best_model_params(AdaBoostClassifier,[10,20,30,40,50,60,70,80,90,100], 100,'n_estimators',learning_rate=best_lr,base_estimator=DecisionTreeClassifier(max_depth=2))
+
+    best_lr=best_model_params(AdaBoostClassifier,[0.01,0.05,0.1,0.2,0.4,0.6,0.8, 1, 10], 100,'learning_rate',n_estimators=best_n,base_estimator=DecisionTreeClassifier(max_depth=2))
 
 
+    best_params_df=pd.DataFrame({'n_estimators':[best_n],'Learning_Rate':[best_lr]})
+    best_params_df.to_csv(r'best_params_ada.csv')
+
+
+best_n=best_params_df['n_estimators'].tolist()[0]
+best_lr=best_params_df['Learning_Rate'].tolist()[0]
+
+## Use the best model on the test data. Now the 'Amount' in the test data has already been scaled
+
+ada=AdaBoostClassifier(n_estimators=best_n,learning_rate=best_lr)
+ada.fit(X_train_cv,y_train_cv)
+predictions=ada.predict(X_test)
+print(classification_report(y_test,predictions))
+
+## Plot the learning curve for the best model
+
+
+train_sizes, train_scores, test_scores = learning_curve(lg, X_train_cv, y_train_cv, cv=5, n_jobs=1,scoring='f1')
+train_scores_mean = np.mean(train_scores, axis=1)
+train_scores_std = np.std(train_scores, axis=1)
+test_scores_mean = np.mean(test_scores, axis=1)
+test_scores_std = np.std(test_scores, axis=1)
+
+plt.figure()
+plt.title('Learning Curves')
+plt.xlabel("Training examples")
+plt.ylabel("Score")
+plt.grid()
+plt.fill_between(train_sizes, train_scores_mean - train_scores_std, train_scores_mean + train_scores_std, alpha=0.1, color="r")
+plt.fill_between(train_sizes, test_scores_mean - test_scores_std, test_scores_mean + test_scores_std, alpha=0.1, color="g")
+plt.plot(train_sizes, train_scores_mean, 'o-', color="r", label="Training score")
+plt.plot(train_sizes, test_scores_mean, 'o-', color="g", label="Cross-validation score")
+plt.legend(loc="best")
+plt.show()
+
+## Plot the roc curve for the best model
+
+fpr, tpr, thresholds = roc_curve(y_test,probs[:,1],)
+
+plt.figure()
+plt.title('ROC curve')
+plt.xlabel("FPR")
+plt.ylabel("TPR")
+plt.grid()
+plt.plot(fpr,tpr,color="r")
+plt.show()
+
+sns.heatmap(confusion_matrix(y_test,predictions),annot=True)
+plt.xlabel('Predicted Label')
+plt.ylabel('True Label')
+plt.title('Confusion Matrix for the test set')
+plt.show()
 
 
 
